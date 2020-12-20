@@ -9,6 +9,23 @@ function randPos() {
   return new THREE.Vector3(x, 0, z);
 }
 
+// gets the difference vector
+function differenceVector(v1, v2) {
+  var x = v1.x - v2.x;
+  var y = v1.y - v2.y;
+  var z = v1.z - v2.z;
+
+  return new THREE.Vector3(x, y, z);
+}
+
+// creates a new sum vector
+function addVector(v1, v2) {
+  var x = v1.x + v2.x;
+  var y = v1.y + v2.y;
+  var z = v1.z + v2.z;
+
+  return new THREE.Vector3(x, y, z);
+}
 /*We are going to create markers randomly scattered throughout the grid, 
 which get used in the space colonization algorithm and gets picked up by 
 agents.*/
@@ -19,9 +36,19 @@ class Marker {
 
   // constructor:
   // should have positions, whether or not it's free, length & width
-  constructor() {
+  constructor(obs, w, l) {
     this.position = randPos();
     this.free = true;
+    this.obs = obs;
+    this.w = w;
+    this.l = l;
+
+    // if there is an obstacle on the marker, then it is not free
+    if (obs && (this.position.x < w / 2 && this.position.x > - w / 2) && 
+      (this.position.z < l / 2 && this.position.z > - l / 2))
+    {
+      this.free = false;
+    }
     this.geom = this.createMesh();
   }
 
@@ -57,7 +84,7 @@ class Agent {
   
   // creates the mesh
   createMesh() {
-    var geometry = new THREE.CylinderGeometry(5, 5, 20, 32);
+    var geometry = new THREE.BoxGeometry(10, 20, 10);
     geometry.applyMatrix(new THREE.Matrix4().makeTranslation(0, 10, 0));
     var material = new THREE.MeshBasicMaterial({
       color: this.color
@@ -65,6 +92,15 @@ class Agent {
     var mesh = new THREE.Mesh(geometry, material);
     return mesh;
   }
+
+  // creates the goal mesh
+  makeGoalMesh() {
+    var geometry = new THREE.CylinderGeometry( 5, 5, 0.25, 8 );
+    var material = new THREE.MeshBasicMaterial({color: this.color});
+    var mesh = new THREE.Mesh(geometry, material);
+    return mesh; 
+  }
+
   // generates a random color
   generateColor() {
     var r = (Math.round(Math.random()* 127) + 127) / 255;
@@ -72,6 +108,7 @@ class Agent {
     var b = (Math.round(Math.random()* 127) + 127) / 255;
     return new THREE.Color(r, g, b);
   }
+
   // gets the difference vector
   differenceVector(v1, v2) {
     var x = v1.x - v2.x;
@@ -80,6 +117,7 @@ class Agent {
 
     return new THREE.Vector3(x, y, z);
   }
+
   // gets the marker weight
   getWeight(marker) {
     // get the angle from the marker to the goal
@@ -271,17 +309,31 @@ class Grid {
 }
 
 function Crowd(scene) {
-  this.initialize = function(numAgents, numMarkers) {
+  this.initialize = function(numAgents, numMarkers, obstacle) {
     this.numAgents = numAgents;
     this.numMarkers = numMarkers;
+    this.obs = obstacle;
+    this.obsW = 0;
+    this.obsL = 0;
 
     // create the grid
     this.grid = new Grid();
     scene.add(this.grid.geom);
 
+    // if there is an obstacle, then create obstacle
+    if (this.obs) {
+      this.obsW = Math.random() * 100 + 50;
+      this.obsL = Math.random() * 100 + 50;        
+      var geometry = new THREE.BoxGeometry(this.obsW, 40, this.obsL);
+      geometry.applyMatrix( new THREE.Matrix4().makeTranslation(0, 20, 0));
+      var material = new THREE.MeshBasicMaterial({color: 'black'});
+      this.obsMesh = new THREE.Mesh( geometry, material );
+      scene.add(this.obsMesh);
+    }
+
     // create the markers
     for (var i = 0; i < numMarkers; i++) {
-      var m = new Marker();
+      var m = new Marker(this.obs, this.obsW, this.obsL);
       scene.add(m.geom);
       m.geom.position.set(m.position.x, m.position.y, m.position.z);
       this.grid.markers.push(m);
@@ -328,13 +380,162 @@ function Crowd(scene) {
     }
     this.grid.markers = [];
     this.grid.cells = [];
+    scene.remove(this.obsMesh);
   }
 }
 
+// add a third person mode
+function TPerson(scene) {
+  // movement speed
+  var xSpeed = 0.01;
+  var zSpeed = 0.01;
+  var control = new Agent();
+  control.color = new THREE.Vector3(0, 0, 0);
+
+  this.initialize = function(numAgents, numMarkers, obstacle) {
+    this.numAgents = numAgents;
+    this.numMarkers = numMarkers;
+
+    this.obs = obstacle;
+    this.obsW = 0;
+    this.obsL = 0;
+    // create the grid
+    this.grid = new Grid();
+    scene.add(this.grid.geom);
+
+    // create the controlled marker
+   
+    var x = SIZE * 0.5;
+    var z = SIZE * 0.5;
+    control.position = new THREE.Vector3(x, 0, z);
+    scene.add(control.geom);
+    control.geom.position.set(control.position.x, control.position.y, control.position.z);
+    // this.grid.agents.push(control);
+    // create the markers
+    for (var i = 0; i < numMarkers; i++) {
+      var m = new Marker(this.obs, this.obsW, this.obsL);
+      scene.add(m.geom);
+      m.geom.position.set(m.position.x, m.position.y, m.position.z);
+      this.grid.markers.push(m);
+    }
+  
+    // create the agents
+    for (var i = 0; i < numAgents; i++) {
+
+      // outer circle
+      var a = new Agent();
+      var x = 0.4 * SIZE * Math.cos(2 * i * Math.PI / numAgents);
+      var z = 0.4 * SIZE * Math.sin(2 * i * Math.PI / numAgents);
+      a.position = new THREE.Vector3(x, 0, z);
+
+      // 2nd outer
+      var b = new Agent();
+      var bx = 0.3 * SIZE * Math.sin(2 * i * Math.PI / numAgents);
+      var bz = 0.3 * SIZE * Math.cos(2 * i * Math.PI / numAgents);
+      b.position = new THREE.Vector3(bx, 0, bz);
+
+      // third outer
+      var c = new Agent();
+      var cx = 0.2 * SIZE * Math.cos(2 * i * Math.PI / numAgents);
+      var cz = 0.2 * SIZE * Math.sin(2 * i * Math.PI / numAgents);
+      c.position = new THREE.Vector3(cx, 0, cz);
+
+      // innermost
+      var d = new Agent();
+      var dx = 0.1 * SIZE * Math.sin(2 * i * Math.PI / numAgents);
+      var dz = 0.1 * SIZE * Math.cos(2 * i * Math.PI / numAgents);
+      d.position = new THREE.Vector3(dx, 0, dz);
+
+      // add everything to the scene
+      scene.add(a.geom);
+      a.geom.position.set(a.position.x, a.position.y, a.position.z);
+      scene.add(b.geom);
+      b.geom.position.set(b.position.x, b.position.y, b.position.z);
+      scene.add(c.geom);
+      c.geom.position.set(c.position.x, c.position.y, c.position.z);
+      scene.add(d.geom);
+      d.geom.position.set(d.position.x, d.position.y, d.position.z);
+
+      this.grid.agents.push(a);
+      this.grid.agents.push(b);
+      this.grid.agents.push(c);
+      this.grid.agents.push(d);
+    }
+
+    this.grid.createCells();
+  }
+  this.update = function() {
+    // event listener for movement
+    document.addEventListener("keydown", onDocumentKeyDown, false);
+    function onDocumentKeyDown(event) {
+      var keyCode = event.which;
+      if (keyCode == 87) {
+        control.position.z -= zSpeed;
+        control.geom.position.set(control.position.x, control.position.y, control.position.z);
+      } else if (keyCode == 83) {
+        control.position.z += zSpeed;
+        control.geom.position.set(control.position.x, control.position.y, control.position.z);
+      } else if (keyCode == 65) {
+        control.position.x -= xSpeed;
+        control.geom.position.set(control.position.x, control.position.y, control.position.z);
+      } else if (keyCode == 68) {
+        control.position.x += xSpeed;
+        control.geom.position.set(control.position.x, control.position.y, control.position.z);
+      } else if (keyCode == 32) {
+        control.position.set(0, 0, 0);
+        control.geom.position.set(control.position.x, control.position.y, control.position.z);
+      }
+    };  
+
+    // update the agents
+
+    for (var i = 0; i < this.grid.agents.length; i++) {
+      var a = this.grid.agents[i];
+
+      // if the control is within 1, then you want it to move out of the way
+      if (a.position.distanceTo(control.position) < 40) {
+
+        // i make the new goal of the agent to just be the difference vector added onto
+        // current position
+        var diff = differenceVector(a.position, control.position);
+        var newG = addVector(a.position, diff);
+        a.goal = newG;
+
+        var dist = a.position.distanceTo(a.goal);
+        this.grid.updateCells();
+        this.grid.updateMarkers();
+
+        if (dist > 1) {
+          a.updatePos();
+          a.geom.position.set(a.position.x, a.position.y, a.position.z);
+        }
+      }      
+    }
+  }
+  this.reset = function() {
+    for (var i = 0; i < this.numAgents; i++) {
+      var agent = this.grid.agents[i];
+      scene.remove(agent.geom);
+    }
+    this.grid.agents = [];
+    for (var i = 0; i < this.numMarkers; i++) {
+      scene.remove(this.grid.markers[i].geom);
+    }
+    this.grid.markers = [];
+    this.grid.cells = [];
+    scene.remove(this.obsMesh);
+  }
+
+}
+
 var crowd;
+var third;
+// GUI options
 var options = {
   numMarkers: 2000,
   numAgents: 10,
+  obstacle: false,
+  thirdPerson: false 
 }
 
 function create() {
@@ -358,6 +559,16 @@ function create() {
   controls.panSpeed = 2.0;
   controls.update();
 
+  // STATS GUI
+  var statsFPS = new Stats();
+  statsFPS.domElement.style.cssText = "position:absolute;top:3px;left:3px;";
+  statsFPS.showPanel(0); // 0: fps,
+
+  //memory stats
+  var statsMemory = new Stats();
+  statsMemory.showPanel(2); //2: mb, 1: ms, 3+: custom
+  statsMemory.domElement.style.cssText = "position:absolute;top:3px;left:84px;";
+
   /* DAT GUI */
   var gui = new dat.GUI();
   // change number of agents
@@ -370,7 +581,19 @@ function create() {
     crowd.reset();
     crowd.initialize(options.numAgents, newVal);
   });
+  // add obstacle
+  gui.add(options, 'obstacle').onChange(function(newVal) {
+    crowd.reset();
+    crowd.initialize(options.numAgents, options.numMarkers, options.obstacle);
+  });
+  // add third person
+  gui.add(options, 'thirdPerson').onChange(function(newVal) {
+    options.thirdPerson = true;
+    crowd.reset();
+    third.initialize(options.numAgents, options.numMarkers);
+  });
 
+  // set up the scene
   var directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
   scene.add(directionalLight);
   scene.background = new THREE.Color('skyblue');
@@ -387,9 +610,20 @@ function create() {
   });
   
   crowd = new Crowd(scene);
+  third = new TPerson(scene);
   crowd.initialize(options.numAgents, options.numMarkers);
+  document.body.appendChild(statsFPS.dom);
+  document.body.appendChild(statsMemory.dom);
   (function tick() {
-    crowd.update();
+    if (!options.thirdPerson) {
+      crowd.update();
+    } else {
+      third.update();
+    }
+    
+    //update stats
+    statsFPS.update();
+    statsMemory.update();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
   })();
