@@ -10,6 +10,8 @@ You can interchange the number of Agents and Markers used for BioCrowds. In the 
 ### Obstacle
 You can add an obstacle in the center of the grid.
 
+![](./demos/demo3.gif)
+
 ### Controllable Agent
 Going to "Third Person" mode, you can control the Agent with WASD controls and mingle with the crowd.
 
